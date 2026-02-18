@@ -18,20 +18,19 @@ install_awg_packages() {
     PKGPOSTFIX="_v${VERSION}_${PKGARCH}_${TARGET}_${SUBTARGET}.ipk"
     BASE_URL="https://github.com/Slava-Shchipunov/awg-openwrt/releases/download/"
 
-    # Определяем версию AWG протокола (2.0 для OpenWRT >= 23.05.6 и >= 24.10.3)
+    # Определяем версию AWG протокола (2.0 для OpenWRT >= 23.05.6 и всех 24.10.x)
     AWG_VERSION="1.0"
     MAJOR_VERSION=$(echo "$VERSION" | cut -d '.' -f 1)
     MINOR_VERSION=$(echo "$VERSION" | cut -d '.' -f 2)
     PATCH_VERSION=$(echo "$VERSION" | cut -d '.' -f 3)
     
     if [ "$MAJOR_VERSION" -gt 24 ] || \
-       [ "$MAJOR_VERSION" -eq 24 -a "$MINOR_VERSION" -gt 10 ] || \
-       [ "$MAJOR_VERSION" -eq 24 -a "$MINOR_VERSION" -eq 10 -a "$PATCH_VERSION" -ge 3 ] || \
+       [ "$MAJOR_VERSION" -eq 24 -a "$MINOR_VERSION" -ge 10 ] || \
        [ "$MAJOR_VERSION" -eq 23 -a "$MINOR_VERSION" -eq 5 -a "$PATCH_VERSION" -ge 6 ]; then
         AWG_VERSION="2.0"
-        LUCI_PACKAGE_NAME="luci-proto-amneziawg"
+        LUCI_PACKAGE_CANDIDATES="luci-proto-amneziawg luci-app-amneziawg"
     else
-        LUCI_PACKAGE_NAME="luci-app-amneziawg"
+        LUCI_PACKAGE_CANDIDATES="luci-app-amneziawg luci-proto-amneziawg"
     fi
 
     printf "\033[32;1mDetected AWG version: $AWG_VERSION\033[0m\n"
@@ -89,19 +88,25 @@ install_awg_packages() {
     
     # Проверяем оба возможных названия пакета
     if opkg list-installed | grep -q "luci-proto-amneziawg\|luci-app-amneziawg"; then
-        echo "$LUCI_PACKAGE_NAME already installed"
+        echo "luci package already installed"
     else
-        LUCI_AMNEZIAWG_FILENAME="${LUCI_PACKAGE_NAME}${PKGPOSTFIX}"
-        DOWNLOAD_URL="${BASE_URL}v${VERSION}/${LUCI_AMNEZIAWG_FILENAME}"
-        wget -O "$AWG_DIR/$LUCI_AMNEZIAWG_FILENAME" "$DOWNLOAD_URL"
+        LUCI_PACKAGE_NAME=""
+        for CANDIDATE in $LUCI_PACKAGE_CANDIDATES; do
+            LUCI_AMNEZIAWG_FILENAME="${CANDIDATE}${PKGPOSTFIX}"
+            DOWNLOAD_URL="${BASE_URL}v${VERSION}/${LUCI_AMNEZIAWG_FILENAME}"
+            if wget -O "$AWG_DIR/$LUCI_AMNEZIAWG_FILENAME" "$DOWNLOAD_URL"; then
+                LUCI_PACKAGE_NAME="$CANDIDATE"
+                break
+            fi
+            rm -f "$AWG_DIR/$LUCI_AMNEZIAWG_FILENAME"
+        done
 
-        if [ $? -eq 0 ]; then
-            echo "$LUCI_PACKAGE_NAME file downloaded successfully"
-        else
-            echo "Error downloading $LUCI_PACKAGE_NAME. Please, install $LUCI_PACKAGE_NAME manually and run the script again"
+        if [ -z "$LUCI_PACKAGE_NAME" ]; then
+            echo "Error downloading LuCI package (tried: $LUCI_PACKAGE_CANDIDATES). Please install manually and run the script again"
             exit 1
         fi
 
+        echo "$LUCI_PACKAGE_NAME file downloaded successfully"
         opkg install "$AWG_DIR/$LUCI_AMNEZIAWG_FILENAME"
 
         if [ $? -eq 0 ]; then
